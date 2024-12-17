@@ -80,14 +80,6 @@ def plot_IBZ_with_materials_and_diameters(mesh, materials_dict, diameters_dict):
     cell_ids = np.arange(grid.n_cells)  # Obtener los identificadores de las celdas
     cell_centers = grid.cell_centers()
 
-    # p.add_point_labels(cell_centers, cell_ids, 
-    #                         show_points=False, 
-    #                         font_size=10, 
-    #                         text_color="w", 
-    #                         shape_opacity=0, 
-    #                         justification_horizontal='center',
-    #                         justification_vertical='center')
-
     p.set_background('#1f1f1f')
     #p.add_mesh(grid, show_edges=True, scalars="colors", rgb=True)
     p.add_axes(color='w')
