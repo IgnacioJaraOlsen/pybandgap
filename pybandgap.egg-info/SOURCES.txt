@@ -1,0 +1,14 @@
+setup.py
+meshes/__init__.py
+meshes/truss_like_mesh.py
+pybandgap/__init__.py
+pybandgap/bandgap.py
+pybandgap/eigenvalue_solver.py
+pybandgap/mass_and_stiffness_matrix.py
+pybandgap/new_structure.py
+pybandgap/plot_mesh.py
+pybandgap/set_material_structure.py
+pybandgap.egg-info/PKG-INFO
+pybandgap.egg-info/SOURCES.txt
+pybandgap.egg-info/dependency_links.txt
+pybandgap.egg-info/top_level.txt
