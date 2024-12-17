@@ -22,7 +22,6 @@ def plot_IBZ(mesh, elements):
     node_coords = mesh.geometry.x  # Coordenadas de los nodos
     node_ids = np.arange(node_coords.shape[0])  # Identificadores de los nodos
 
-
     # Etiquetar las celdas
     cell_ids = np.arange(grid.n_cells)  # Obtener los identificadores de las celdas
     cell_centers = grid.cell_centers()
@@ -42,7 +41,7 @@ def plot_IBZ(mesh, elements):
                        font_size=font_size, 
                        text_color="y",
                        shape_opacity=0, 
-                       justification_horizontal='right',
+                       justification_horizontal='center',
                        justification_vertical='center')
 
     p.set_background('#1f1f1f')
@@ -52,7 +51,7 @@ def plot_IBZ(mesh, elements):
     p.view_xy()
     p.show()
     
-def plot_IBZ_with_materials_and_diameters(mesh, materials_dict, diameters_dict):
+def plot_structure_materials_and_diameters(mesh, materials_dict, diameters_dict):
     p = pyvista.Plotter()
 
     tdim = mesh.topology.dim
@@ -80,14 +79,6 @@ def plot_IBZ_with_materials_and_diameters(mesh, materials_dict, diameters_dict):
 
     cell_ids = np.arange(grid.n_cells)  # Obtener los identificadores de las celdas
     cell_centers = grid.cell_centers()
-
-    # p.add_point_labels(cell_centers, cell_ids, 
-    #                         show_points=False, 
-    #                         font_size=10, 
-    #                         text_color="w", 
-    #                         shape_opacity=0, 
-    #                         justification_horizontal='center',
-    #                         justification_vertical='center')
 
     p.set_background('#1f1f1f')
     #p.add_mesh(grid, show_edges=True, scalars="colors", rgb=True)

@@ -19,9 +19,7 @@ def truss_like_cross():
             index +=  1
         index +=  1
     lines = []
-    
-    
-    
+
     # Crear líneas horizontales
     for i in range(nc + 1):
         points_horizontal_lines = points[i * (nc + 1):(i + 1) * (nc + 1)]

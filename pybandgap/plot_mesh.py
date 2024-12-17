@@ -51,7 +51,7 @@ def plot_IBZ(mesh, elements):
     p.view_xy()
     p.show()
     
-def plot_IBZ_with_materials_and_diameters(mesh, materials_dict, diameters_dict):
+def plot_structure_materials_and_diameters(mesh, materials_dict, diameters_dict):
     p = pyvista.Plotter()
 
     tdim = mesh.topology.dim
@@ -76,9 +76,6 @@ def plot_IBZ_with_materials_and_diameters(mesh, materials_dict, diameters_dict):
 
     grid = pyvista.UnstructuredGrid(topology, cell_types, x).extract_surface(nonlinear_subdivision=0)
     grid.cell_data["colors"] = marker
-
-    cell_ids = np.arange(grid.n_cells)  # Obtener los identificadores de las celdas
-    cell_centers = grid.cell_centers()
 
     p.set_background('#1f1f1f')
     #p.add_mesh(grid, show_edges=True, scalars="colors", rgb=True)

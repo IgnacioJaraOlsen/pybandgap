@@ -1,6 +1,37 @@
 import numpy as np
 from dolfinx.mesh import compute_midpoints
 
+class Material:
+    # Variable de clase para contar el número de instancias
+    counter = 0
+
+    def __init__(self, material, young_modulus, poisson_ratio, density):
+        self.young_modulus = young_modulus
+        self.poisson_ratio = poisson_ratio
+        self.density = density
+        self.material = material
+
+        # Incrementar el contador cada vez que se crea una nueva instancia
+        Material.counter += 1
+        # Asignar el número de creación a la instancia
+        self.creation_number = Material.counter
+
+    def __repr__(self):
+        return f'{self.material} (Creation Number: {self.creation_number})'
+
+    @classmethod
+    def get_counter(cls):
+        return cls.counter
+
+class Props:
+    def __init__(self, mesh):
+        self.mesh = mesh
+    
+    def set_prop(self, name, prop):
+        prop = map_prop(self.mesh, prop)
+        prop = list(prop.values())
+        setattr(self, name, prop)
+
 def get_midpoint_elements(mesh):
     tdim = mesh.topology.dim
     mesh_entities = mesh.topology.index_map(tdim).size_local
@@ -163,19 +194,17 @@ def fine_symmetry_elements(mesh, index):
     
     return index_array
 
-def set_materia(mesh, materials):
+def map_prop(mesh, prop):
     elements_in_ibz, _ = fine_irreducible_brillouin_zone(mesh)
     
-    materials_map = {
-        i: m for i, m in zip(elements_in_ibz , materials)
+    prop_map = {
+        i: m for i, m in zip(elements_in_ibz , prop)
         }
     
     map_elements = map(lambda index: fine_symmetry_elements(mesh, index), 
                        elements_in_ibz)
     
     for i, simetry in zip(elements_in_ibz, map_elements):
-            materials_map.update(dict.fromkeys(simetry, materials_map[i]))
+            prop_map.update(dict.fromkeys(simetry, prop_map[i]))
     
-    return materials_map
-    
-    
+    return dict(sorted(prop_map.items()))
