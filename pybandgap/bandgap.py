@@ -203,10 +203,11 @@ def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5,
     return bands
     
 def bandgap(n, mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5, plot = True,
-              tol: float = 1e-10,
-              max_it: int = 200,):
+            normalized = 1/(2 * np.pi)/1000,
+            tol: float = 1e-10,
+            max_it: int = 200,):
     
-    bands = eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = NINT, N_eig= N_eig, tol = tol, max_it= max_it)/(2 * np.pi)/1000
+    bands = eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = NINT, N_eig= N_eig, tol = tol, max_it= max_it) * normalized
     
     maximo = np.max(bands[:, n - 1])
     minimo = np.min(bands[:, n])

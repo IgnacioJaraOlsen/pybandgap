@@ -155,7 +155,8 @@ def fine_symmetry_elements(mesh, index):
     
     def get_index(i, point, axis, direction = None):
         
-        index_projection = np.where(np.all(np.isclose(point, midpoints, atol=1e-3), axis=1))[0]
+        index_projection = np.where(np.all(np.isclose(point, midpoints, atol=1e-10), axis=1))[0]
+
         if len(index_projection) > 1:            
             nodes_index = get_nodes_element(mesh, i)
             projection = apply_symmetric_projection(midpoint_mesh, nodes_index, axis, direction = direction)
@@ -166,6 +167,7 @@ def fine_symmetry_elements(mesh, index):
                 return index_projection[0]
             else:
                 return index_projection[1]
+        
         return index_projection
     
     index_array = np.array([index])
@@ -203,6 +205,6 @@ def map_prop(mesh, prop):
                        elements_in_ibz)
     
     for i, simetry in zip(elements_in_ibz, map_elements):
-            prop_map.update(dict.fromkeys(simetry, prop_map[i]))
+        prop_map.update(dict.fromkeys(simetry, prop_map[i]))
     
     return dict(sorted(prop_map.items()))
