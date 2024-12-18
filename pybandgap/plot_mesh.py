@@ -51,25 +51,22 @@ def plot_IBZ(mesh, elements):
     p.view_xy()
     p.show()
     
-def plot_structure_materials_and_diameters(mesh, materials_dict, diameters_dict):
+def plot_structure_materials_and_diameters(mesh, props,
+                                           colors = [[67, 75, 217],
+                                                     [217, 67, 70],
+                                                     [97, 213, 157],
+                                                     [213, 213, 97]]):
     p = pyvista.Plotter()
 
     tdim = mesh.topology.dim
     num_cells_local = mesh.topology.index_map(tdim).size_local
-    marker = np.zeros((num_cells_local, 3))
-    line_widths = np.ones(num_cells_local)  # Default line width
-    
-    # Set color and line width based on materials and diameters
-    for cell_id, material in materials_dict.items():
-        if material.creation_number == 1:
-            marker[cell_id, :] = np.array([67, 75, 217])/255  # Color for material 1
-        elif material.creation_number == 2:
-            marker[cell_id, :] = np.array([217, 67, 70])/255  # Color for material 2
 
-    for cell_id, diameter in diameters_dict.items():
-        line_widths[cell_id] = diameter*10  # Set line width based on diameter
+    # Set color and line width based on materials and diameters
+    marker = np.array([np.array(colors[material.creation_number])/255 for material in props.materials.values()])
+    
+    line_widths = np.array([diameter for diameter in props.diameters.values()])
         
-    line_widths = np.exp(line_widths* 25)
+    line_widths = np.exp(line_widths* 250)
 
     mesh.topology.create_connectivity(tdim, tdim)
     topology, cell_types, x = vtk_mesh(mesh, tdim, np.arange(num_cells_local, dtype=np.int32))

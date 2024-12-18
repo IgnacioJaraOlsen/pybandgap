@@ -27,23 +27,23 @@ def matrix_and_stiffness_matrix(mesh, props):
     v = ufl.TestFunction(V)
 
     E_func = dolfinx.fem.Function(V0)
-    E_func.x.array[:] = props.materials.young_modulus
+    E_func.x.array[:] = [material.young_modulus for material in props.materials.values()]
     
     density_func = dolfinx.fem.Function(V0)
-    density_func.x.array[:] = props.materials.density
+    density_func.x.array[:] = [ material.density for material in props.materials.values()]
     
     if mesh.topology.dim == 1:
-        if "diameters" not in props:
+        if not hasattr(props, 'diameters'):
             raise ValueError("add diameters_map in props")
         area_func = dolfinx.fem.Function(V0)
-        area_func.x.array[:] = props.diameters
+        area_func.x.array[:] = [np.pi * diameter**2 /4 for diameter in props.diameters.values()]
         
         stiffness_form = truss_stiffness(u, v, E_func, area_func)
         mass_form = truss_mass(u, v, density_func, area_func)
         
     else:
         nu_func = dolfinx.fem.Function(V0)
-        nu_func.x.array[:] = props.materials.poisson_ratio
+        nu_func.x.array[:] = [material.poisson_ratio for material in props.materials.values()]
 
         stiffness_form = plate_stiffness(u, v, E_func, nu_func)
         mass_form = truss_mass(u, v, density_func, area_func)

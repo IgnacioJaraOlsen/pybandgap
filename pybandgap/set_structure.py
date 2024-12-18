@@ -3,7 +3,7 @@ from dolfinx.mesh import compute_midpoints
 
 class Material:
     # Variable de clase para contar el número de instancias
-    counter = 0
+    counter = -1
 
     def __init__(self, material, young_modulus, poisson_ratio, density):
         self.young_modulus = young_modulus
@@ -21,7 +21,7 @@ class Material:
 
     @classmethod
     def get_counter(cls):
-        return cls.counter
+        return int(cls.counter)
 
 class Props:
     def __init__(self, mesh):
@@ -29,7 +29,6 @@ class Props:
     
     def set_prop(self, name, prop):
         prop = map_prop(self.mesh, prop)
-        prop = list(prop.values())
         setattr(self, name, prop)
 
 def get_midpoint_elements(mesh):
