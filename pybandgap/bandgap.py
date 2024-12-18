@@ -177,7 +177,9 @@ def wave_vector(mesh, NINT):
     return thetax, thetay
 
 
-def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5):
+def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5,
+              tol: float = 1e-10,
+              max_it: int = 200,):
 
     thetax, thetay = wave_vector(mesh, NINT)
     T_k = T_matrix(mesh)
@@ -192,15 +194,19 @@ def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5):
             K,
             M,
             nev=N_eig,
+            tol= tol,
+            max_it= max_it,
             )
         
         bands[i,:] = np.sqrt(eigensolver[:N_eig])
 
     return bands
     
-def bandgap(n, mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5, plot = True):
+def bandgap(n, mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5, plot = True,
+              tol: float = 1e-10,
+              max_it: int = 200,):
     
-    bands = eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = NINT, N_eig= N_eig)/(2 * np.pi)/1000
+    bands = eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = NINT, N_eig= N_eig, tol = tol, max_it= max_it)/(2 * np.pi)/1000
     
     maximo = np.max(bands[:, n - 1])
     minimo = np.min(bands[:, n])
