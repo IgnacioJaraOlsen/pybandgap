@@ -13,7 +13,7 @@ def plate_stiffness(u, v, E, nu):
     lambda_ = E * nu / ((1 + nu) * (1 - 2 * nu))
         
     epsilon = lambda u: ufl.sym(ufl.grad(u))
-    sigma = lambda u: lambda_ * ufl.tr(epsilon(u)) * ufl.Identity(len(u)) + 2 * mu * epsilon(u)
+    sigma = lambda u: lambda_ * ufl.tr(epsilon(u)) * ufl.Identity(len(u)) + 2.0 * mu * epsilon(u)
         
     return ufl.inner(sigma(u), epsilon(v)) * ufl.dx
 
@@ -46,7 +46,7 @@ def matrix_and_stiffness_matrix(mesh, props):
         nu_func.x.array[:] = [material.poisson_ratio for material in props.materials.values()]
 
         stiffness_form = plate_stiffness(u, v, E_func, nu_func)
-        mass_form = truss_mass(u, v, density_func, area_func)
+        mass_form = plate_mass(u, v, density_func)
 
     mass_matrix = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(mass_form))
     mass_matrix.assemble()

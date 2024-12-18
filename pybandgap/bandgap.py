@@ -64,7 +64,6 @@ def T_matrix(mesh):
     num_nodes_y = len(reduced_nodes)
     
     # Create PETSc matrix
-    print(num_nodes_y)
     T = MatExtended().create()
     T.setSizes((2 * num_nodes_x, 2 * (num_nodes_y)))
     T.setType(PETSc.Mat.Type.AIJ)
@@ -183,10 +182,6 @@ def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5):
     thetax, thetay = wave_vector(mesh, NINT)
     T_k = T_matrix(mesh)
     bands = np.zeros((len(thetax), N_eig))
-    
-    np.set_printoptions(precision=3, formatter={'all': lambda x: f'{x:.4e}'})
-    from scipy.sparse.linalg import eigs
-    
        
     for i, (x, y) in enumerate(zip(thetax, thetay)):
         T = T_k(x, y)
@@ -198,11 +193,9 @@ def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5):
             M,
             nev=N_eig,
             )
-       
+        
         bands[i,:] = np.sqrt(eigensolver[:N_eig])
-    
-    
-    np.set_printoptions()
+
     return bands
     
 def bandgap(n, mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5, plot = True):

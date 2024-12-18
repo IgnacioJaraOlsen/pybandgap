@@ -26,7 +26,7 @@ def plot_IBZ(mesh, elements):
     cell_ids = np.arange(grid.n_cells)  # Obtener los identificadores de las celdas
     cell_centers = grid.cell_centers()
 
-    font_size = 15
+    font_size = 10
 
     p.add_point_labels(cell_centers, cell_ids, 
                             show_points=False, 
@@ -51,23 +51,28 @@ def plot_IBZ(mesh, elements):
     p.view_xy()
     p.show()
     
-def plot_structure_materials_and_diameters(mesh, props,
-                                           colors = [[67, 75, 217],
-                                                     [217, 67, 70],
-                                                     [97, 213, 157],
-                                                     [213, 213, 97]]):
+def plot_structure(mesh, props,
+                   colors = [
+                       [67, 75, 217],
+                       [217, 67, 70],
+                       [97, 213, 157],
+                       [213, 213, 97]
+                       ]):
+    
     p = pyvista.Plotter()
 
     tdim = mesh.topology.dim
     num_cells_local = mesh.topology.index_map(tdim).size_local
 
+    has_diameters = hasattr(props, 'diameters')
+
+    if has_diameters:
+        line_widths = np.array([diameter for diameter in props.diameters.values()])        
+        line_widths = np.exp(line_widths* 250)
+
     # Set color and line width based on materials and diameters
     marker = np.array([np.array(colors[material.creation_number])/255 for material in props.materials.values()])
     
-    line_widths = np.array([diameter for diameter in props.diameters.values()])
-        
-    line_widths = np.exp(line_widths* 250)
-
     mesh.topology.create_connectivity(tdim, tdim)
     topology, cell_types, x = vtk_mesh(mesh, tdim, np.arange(num_cells_local, dtype=np.int32))
 
@@ -80,10 +85,13 @@ def plot_structure_materials_and_diameters(mesh, props,
 
     # Set line widths for each cell
     for cell_id in range(num_cells_local):
-        p.add_mesh(grid.extract_cells(cell_id), 
-                   color=marker[cell_id], 
-                   line_width=line_widths[cell_id], 
-                   )
+        if has_diameters:
+            p.add_mesh(grid.extract_cells(cell_id), 
+                       color=marker[cell_id], 
+                       line_width=line_widths[cell_id])
+        else:
+            p.add_mesh(grid.extract_cells(cell_id), color=marker[cell_id])
+            
 
     p.show_axes()
     p.view_xy()

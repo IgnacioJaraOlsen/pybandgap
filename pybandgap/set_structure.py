@@ -49,19 +49,18 @@ def get_midpoint_mesh(mesh):
     z_min = np.min(x[:, 2])
     z_max = np.max(x[:, 2])
     
-    midpoint_mesh = [(x_max-x_min)/2, (y_max - y_min)/2, (z_max - z_min)/2]
+    midpoint_mesh = [(x_max+x_min)/2, (y_max + y_min)/2, (z_max + z_min)/2]
     return midpoint_mesh
 
 def fine_irreducible_brillouin_zone(mesh):    
     
     midpoint_mesh = get_midpoint_mesh(mesh)
-    
     midpoints = get_midpoint_elements(mesh)
 
     x_limit = (midpoints[:, 0] >= midpoint_mesh[0])
     y_limit = (midpoints[:, 1] >= midpoint_mesh[1])
     xy_limit = ((midpoints[:, 1] < midpoints[:, 0]) | 
-                 np.isclose(midpoints[:, 1], midpoints[:, 0]))
+                np.isclose(midpoints[:, 1], midpoints[:, 0]))
     
     conditon =  np.vstack(
         (x_limit, y_limit, xy_limit)

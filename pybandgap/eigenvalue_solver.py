@@ -12,9 +12,8 @@ def solve_generalized_eigenvalue_problem(
     A: PETSc.Mat,
     B: PETSc.Mat,
     nev: int = 10,
-    tol: float = 1e-12,
-    max_it: int = 20,
-    target: float = 0.0,
+    tol: float = 1e-10,
+    max_it: int = 200,
 ) -> SLEPc.EPS:
     
     # Create MPI communicator
@@ -27,14 +26,8 @@ def solve_generalized_eigenvalue_problem(
     # Set problem type to generalized
     eps.setProblemType(SLEPc.EPS.ProblemType.GNHEP)  # Non-Hermitian generalized
     
-    # # Set the spectral transformation to target small magnitude eigenvalues
-    # st = eps.getST()
-    # st.setType(SLEPc.ST.Type.SINVERT)  # Shift-and-invert
-    
     # Set solver parameters
     eps.setWhichEigenpairs(SLEPc.EPS.Which.SMALLEST_MAGNITUDE)
-    # eps.setWhichEigenpairs(SLEPc.EPS.Which.TARGET_MAGNITUDE)
-    # eps.setTarget(target)  # Target small magnitude
     
     # Set solver type
     eps.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
