@@ -2,7 +2,9 @@
 pybandgap is a project for implementing the calculation of the bandgap in 2D structures that exhibit horizontal, vertical, and diagonal symmetry using FEniCSx.
 
 ## Prerequisites
-This project requires FEniCSx with complex number support.
+This project requires:
+- FEniCSx with complex number support.
+- PyVista
 
 ## Examples
 To demonstrate the usage of pybandgap, we have provided two example Jupyter notebooks:
