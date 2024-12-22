@@ -151,12 +151,21 @@ def set_matrix_prime(matrix, T):
     matrix_round.assemblyEnd()    
     return matrix_round
 
-def wave_vector(mesh, NINT):
-    x = mesh.geometry.x
-    x_min = np.min(x[:, 0])
-    x_max = np.max(x[:, 0])
-    y_min = np.min(x[:, 1])
-    y_max = np.max(x[:, 1])
+def wave_vector(meshes, NINT):
+    x_min = float('inf')
+    x_max = float('-inf')
+    y_min = float('inf')
+    y_max = float('-inf')
+    
+    if not isinstance(meshes, (list, tuple)):
+        meshes = [meshes]
+    
+    for mesh in meshes:
+        x = mesh.geometry.x
+        x_min = min(x_min, np.min(x[:, 0]))
+        x_max = max(x_max, np.max(x[:, 0]))
+        y_min = min(y_min, np.min(x[:, 1]))
+        y_max = max(y_max, np.max(x[:, 1]))
     
     Lx = x_max - x_min
     Ly = y_max - y_min
