@@ -12,3 +12,5 @@ To demonstrate the usage of pybandgap, we have provided two example Jupyter note
 1- [**Truss-Like Bandgap**](examples/truss-like.ipynb)
 
 2- [**Plate-Like Bandgap**](examples/plate-like.ipynb)
+
+2- [**mix-mesh Bandgap**](examples/mix-mesh.ipynb)
