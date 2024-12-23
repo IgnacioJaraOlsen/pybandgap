@@ -1,80 +1,117 @@
 import numpy as np
 from petsc4py import PETSc
-from pybandgap.mass_and_stiffness_matrix import matrix_and_stiffness_matrix
+from pybandgap.mass_and_stiffness_matrix import mass_and_stiffness_matrix
 
 
-def find_common_indices(array1, array2):
-    array1_rows = {tuple(row): idx for idx, row in enumerate(array1)}
+def find_common_indices(array1, array2, tol=1e-10):
+    # Convertir filas a tuplas para su uso en un diccionario, con redondeo para la tolerancia
+    array1_rows = {tuple(np.round(row, decimals=int(-np.log10(tol)))): idx for idx, row in enumerate(array1)}
     
-    # Lists to store indices
+    # Listas para almacenar los índices
     indices_array1 = []
     indices_array2 = []
     
-    # Search for common rows
+    # Buscar filas comunes considerando la tolerancia
     for idx2, row in enumerate(array2):
-        row_tuple = tuple(row)
+        row_tuple = tuple(np.round(row, decimals=int(-np.log10(tol))))
         if row_tuple in array1_rows:
-            indices_array1.append(array1_rows[row_tuple])
-            indices_array2.append(idx2)
+            # Verificar si las filas son efectivamente similares dentro de la tolerancia
+            if np.allclose(array1[array1_rows[row_tuple]], row, atol=tol):
+                indices_array1.append(array1_rows[row_tuple])
+                indices_array2.append(idx2)
     
-    return np.vstack(np.array(indices_array1), np.array(indices_array2))
+    return np.vstack((np.array(indices_array1), np.array(indices_array2)))
 
 def mix_matrix(meshes, props):
     mass_matrices = []
     stiffness_matrices = []
     coords = []
     sizes = []
-    
-    # Obtener matrices y tamaños individuales
+
     for mesh, prop in zip(meshes, props):
-        mass, stiffness = matrix_and_stiffness_matrix(mesh, prop)
+        mass, stiffness = mass_and_stiffness_matrix(mesh, prop)
         mass_matrices.append(mass)
         stiffness_matrices.append(stiffness)
         coords.append(mesh.geometry.x)
-        sizes.append(mass.shape[0])
-    
-    # Obtener índices comunes y expandirlos para los DOFs
+        sizes.append(mass.getSize()[0])
+
     index = find_common_indices(*coords)
-    index_dofs = np.hstack((index*2, index*2+1))
-    
-    # Calcular tamaño total
-    total_size = sum(sizes) - len(index_dofs)
-    
-    # Crear matrices PETSc globales
+    # Convertir índices de nodos a índices de DOFs
+    index_dofs = np.vstack((
+        np.hstack((index[0] * 2, index[0] * 2 + 1)),  # DOFs para la primera malla
+        np.hstack((index[1] * 2, index[1] * 2 + 1))   # DOFs para la segunda malla
+    )).astype(np.int32)  # Convertir a int32
+
+    # numero de indices totales de las mallas combinadas
+    total_size = sum(sizes) - len(index_dofs[0])
+
+    # Crear matrices globales con preallocación
     M_global = PETSc.Mat().createAIJ([total_size, total_size])
     K_global = PETSc.Mat().createAIJ([total_size, total_size])
     
-    # Preallocate memoria (esto mejora el rendimiento)
-    M_global.setUp()
-    K_global.setUp()
+    # Preallocación: estimar número de elementos no cero por fila
+    nnz = int(total_size * 0.1)  # estimación del 10% de elementos no cero
+    M_global.setPreallocationNNZ(nnz)
+    K_global.setPreallocationNNZ(nnz)
+
+    M_global.zeroEntries()
+    K_global.zeroEntries()
+
+    # Inicializar el contador de offset para la asignación de índices
+    offset = 0
     
-    # Crear mapeo de índices
-    shared_dof_map = {}
-    for i, j in zip(index_dofs[0], index_dofs[1]):
-        shared_dof_map[j] = i
-    
-    # Insertar primera matriz
-    for i in range(sizes[0]):
-        for j in range(sizes[0]):
-            M_global.setValues(i, j, mass_matrices[0][i, j])
-            K_global.setValues(i, j, stiffness_matrices[0][i, j])
-    
-    # Insertar segunda matriz
-    offset = sizes[0] - len(index_dofs[0])
-    for i in range(sizes[1]):
-        for j in range(sizes[1]):
-            # Determinar índices en la matriz global
-            row = shared_dof_map[i] if i in shared_dof_map else offset + i
-            col = shared_dof_map[j] if j in shared_dof_map else offset + j
+    # Para cada malla, insertar sus matrices locales en las globales
+    for i, (mass, stiff) in enumerate(zip(mass_matrices, stiffness_matrices)):
+        size = sizes[i]  # Ya incluye los DOFs
+        
+        # Crear índices locales y globales para esta malla, asegurando tipo int32
+        local_indices = np.arange(size, dtype=np.int32)
+        global_indices = (local_indices + offset).astype(np.int32)
+        
+        # Si no es la primera malla, ajustar los índices compartidos y posteriores
+        if i > 0:
+            # Ordenar los índices para procesarlos en orden
+            sorted_pairs = sorted(zip(index_dofs[1], index_dofs[0]), key=lambda x: x[0])
             
-            # Añadir valores a las matrices globales
-            M_global.setValues(row, col, mass_matrices[1][i, j], addv=True)
-            K_global.setValues(row, col, stiffness_matrices[1][i, j], addv=True)
-    
+            # Contador para llevar el ajuste acumulativo
+            cumulative_shift = 0
+            
+            for local_idx, shared_idx in sorted_pairs:
+                # Ajustar el índice actual
+                global_indices[local_idx] = shared_idx
+                
+                # Decrementar todos los índices posteriores
+                mask = local_indices > local_idx
+                global_indices[mask] -= 1
+                cumulative_shift += 1
+        
+        
+        # Transferir valores de las matrices locales a las globales
+        for row in range(size):
+            # Obtener los valores e índices de columna para esta fila
+            cols, vals = mass.getRow(row)
+            M_global.setValues(
+                global_indices[row], 
+                global_indices[cols], 
+                vals,
+                addv = True
+            )
+            
+            cols, vals = stiff.getRow(row)
+            K_global.setValues(
+                global_indices[row], 
+                global_indices[cols], 
+                vals,
+                addv = True
+            )
+        
+        # Actualizar el offset para la siguiente malla
+        offset = size
+
     # Ensamblar las matrices finales
     M_global.assemblyBegin()
     M_global.assemblyEnd()
     K_global.assemblyBegin()
     K_global.assemblyEnd()
-    
+
     return M_global, K_global

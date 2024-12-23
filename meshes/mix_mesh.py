@@ -26,7 +26,7 @@ def truss_part(ne_x, ne_y, Lx, Ly):
     lines += [geom.add_line(points[i], points[i+nx-1]) for i in range(0, len(points)-nx, 1) if i % nx != 0]
         
     gmsh.model.geo.synchronize()
-    
+
     gmsh.model.add_physical_group(0, points, 1)
     
     gmsh.model.add_physical_group(1, lines, 2)
@@ -62,6 +62,10 @@ def truss_part(ne_x, ne_y, Lx, Ly):
 
     # Sincronizar para aplicar los cambios
     gmsh.model.geo.synchronize()
+
+    for line in gmsh.model.getEntities(1):
+        line_tag = line[1]
+        gmsh.model.mesh.set_transfinite_curve(line_tag, 2)
 
     gmsh.model.mesh.generate(dim=1)
         
@@ -103,7 +107,7 @@ def plate_part(ne_x, ne_y, Lx, Ly):
     
     gmsh.model.add_physical_group(2, [surface], 3)
     
-    geom.mesh.setTransfiniteSurface(surface, cornerTags= [points[i] for i in range(0, len(points), 2)])   
+    geom.mesh.setTransfiniteSurface(surface, cornerTags= [points[i] for i in range(0, len(points), 2)])
     geom.mesh.setRecombine(2, surface)
     
     gmsh.model.geo.synchronize() 
