@@ -25,6 +25,9 @@ def set_matrix_prime(matrix, T):
     return matrix_round
 
 def wave_vector(meshes, NINT):
+    
+    NINT = int(NINT/3) + 1
+    
     x_min = float('inf')
     x_max = float('-inf')
     y_min = float('inf')
@@ -53,8 +56,8 @@ def wave_vector(meshes, NINT):
     X_L = np.full(NINT, np.pi / Lx)
     Y_0 = np.full(NINT, Minv / Ly)
     
-    thetax = np.hstack((X_0_L, X_L, X_L_0))
-    thetay = np.hstack((Y_0, Y_0_L, Y_L_0))
+    thetax = np.hstack((X_0_L[:-1], X_L[:-1], X_L_0[:-1]))
+    thetay = np.hstack((Y_0[:-1], Y_0_L[:-1], Y_L_0[:-1]))
     
     return thetax, thetay
 
