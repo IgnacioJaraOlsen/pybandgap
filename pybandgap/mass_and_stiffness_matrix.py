@@ -18,10 +18,10 @@ def plate_stiffness(u, v, E, nu):
     epsilon = lambda u: ufl.sym(ufl.grad(u))
     sigma = lambda u: lambda_ * ufl.tr(epsilon(u)) * ufl.Identity(len(u)) + 2.0 * mu * epsilon(u)
         
-    return 0.5e-3 * ufl.inner(sigma(u), epsilon(v)) * ufl.dx
+    return 0.8e-3 * ufl.inner(sigma(u), epsilon(v)) * ufl.dx
 
 def plate_mass(u, v, density):
-    return 0.5e-3 * density * ufl.inner(u, v) * ufl.dx
+    return 0.8e-3 * density * ufl.inner(u, v) * ufl.dx
 
 def mass_and_stiffness_matrix(mesh, props):
     V0 = dolfinx.fem.functionspace(mesh, ("DG", 0))
