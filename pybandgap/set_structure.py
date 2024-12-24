@@ -1,5 +1,12 @@
 import numpy as np
+from dataclasses import dataclass
 from dolfinx.mesh import compute_midpoints
+
+@dataclass
+class Mesh:
+    def set_prop(self, name, prop):
+        prop = map_prop(self.mesh, prop)
+        setattr(self, name, prop)
 
 class Material:
     # Variable de clase para contar el número de instancias

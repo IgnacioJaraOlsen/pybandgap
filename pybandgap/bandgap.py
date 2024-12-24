@@ -56,8 +56,8 @@ def wave_vector(meshes, NINT):
     X_L = np.full(NINT, np.pi / Lx)
     Y_0 = np.full(NINT, Minv / Ly)
     
-    thetax = np.hstack((X_0_L[:-1], X_L[:-1], X_L_0[:-1]))
-    thetay = np.hstack((Y_0[:-1], Y_0_L[:-1], Y_L_0[:-1]))
+    thetax = np.hstack((X_0_L[:-1], X_L[:-1], X_L_0))
+    thetay = np.hstack((Y_0[:-1], Y_0_L[:-1], Y_L_0))
     
     return thetax, thetay
 
