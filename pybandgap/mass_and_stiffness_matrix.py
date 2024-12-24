@@ -4,7 +4,7 @@ import ufl
 
 def truss_stiffness(u, v, E, area):
     epsilon = lambda u: ufl.sym(ufl.grad(u))
-    sigma = lambda u: ufl.tr(ufl.grad(u))*ufl.Identity(len(u))
+    sigma = lambda u: ufl.tr(epsilon(u)) * ufl.Identity(len(u))
     
     return E * area * ufl.inner(sigma(u), epsilon(v)) * ufl.dx
 
