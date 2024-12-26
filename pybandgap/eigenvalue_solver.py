@@ -7,14 +7,14 @@ from petsc4py import PETSc
 from slepc4py import SLEPc
 from dolfinx.fem import FunctionSpace
 
-
 def solve_generalized_eigenvalue_problem(
     A: PETSc.Mat,
     B: PETSc.Mat,
     nev: int = 10,
     tol: float = 1e-10,
     max_it: int = 200,
-) -> SLEPc.EPS:
+):
+    global test
     
     # Create MPI communicator
     comm = PETSc.COMM_WORLD
@@ -40,11 +40,15 @@ def solve_generalized_eigenvalue_problem(
     
     # Solve the eigenvalue problem
     eps.solve()
-
+    
+    vr, _ = A.getVecs()
+    
     # Retrieve eigenvalues
     eigenvalues = []
+    eigenvectors = []
     for i in range(eps.getConverged()):
-        eigenvalue = eps.getEigenvalue(i)
-        eigenvalues.append(eigenvalue.real)
-    
-    return eigenvalues
+        eigenvalue = eps.getEigenpair(i, vr)
+        eigenvalues.append(eigenvalue)
+        eigenvectors.append(vr)
+            
+    return eigenvalues, eigenvectors

@@ -64,7 +64,8 @@ def wave_vector(meshes, NINT):
 
 def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5,
               tol: float = 1e-10,
-              max_it: int = 200,):
+              max_it: int = 200,
+              opt_mode = False):
 
     thetax, thetay = wave_vector(mesh, NINT)
     T_k = T_matrix(mesh)
@@ -74,8 +75,8 @@ def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5,
         T = T_k(x, y)
         M = set_matrix_prime(mass_matrix, T)
         K = set_matrix_prime(stiffness_matrix, T)
-
-        eigensolver = solve_generalized_eigenvalue_problem(
+        
+        eigenvalues, _ = solve_generalized_eigenvalue_problem(
             K,
             M,
             nev=N_eig,
@@ -83,7 +84,7 @@ def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5,
             max_it= max_it,
             )
         
-        bands[i,:] = np.sqrt(eigensolver[:N_eig])
+        bands[i,:] = np.sqrt(np.abs(np.real(eigenvalues[:N_eig])))
 
     return bands
     
