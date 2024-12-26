@@ -24,19 +24,18 @@ class Material:
 
 @dataclass
 class Props:
-    mesh: any
+    mesh: int
     
-    def set_prop(self, name: str, prop: List[Material]) -> None:
-        setattr(self, name, map_prop(self.mesh, prop))
-
+    def add_prop(self, name:str, prop: list):
+        setattr(self, name, prop)
+    
 @dataclass
 class SetStructure:
     meshes: Union[List, Tuple]
-    props: Union[List, Tuple]
     
     def __post_init__(self):
         self.meshes = [self.meshes] if not isinstance(self.meshes, (list, tuple)) else self.meshes
-        self.props = [self.props] if not isinstance(self.props, (list, tuple)) else self.props
+        self.props = [Props(mesh = i) for i in range(len(self.meshes))]
         
         self._find_limits()
         self._map_nodes()
@@ -200,6 +199,10 @@ class SetStructure:
             result.extend(new_indices)
         
         return np.array(result, dtype=int)
+
+    def set_prop(self, name: str, prop: List[Material], mesh = 0) -> None:
+        prop = self.props[mesh]
+        prop.add_prop(name, self.map_prop(self.meshes[mesh], prop))
 
     def map_prop(self, mesh, prop: List[Material]) -> Dict[int, Material]:
         """Map properties to mesh elements considering symmetry"""
