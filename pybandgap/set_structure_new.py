@@ -121,15 +121,15 @@ class SetStructure:
                          for values in limits.values()]
     
     def _map_nodes(self):
-        first_mesh_size = self.meshes[0].shape[0]
+        first_mesh_size = self.meshes[0].geometry.x.shape[0]
         self.node_mapping = {i: i for i in range(first_mesh_size)}
         current_index = first_mesh_size
         
         if len(self.meshes) > 1:
-            common_indices = MeshUtils.find_common_indices(self.meshes[0], self.meshes[1])
+            common_indices = MeshUtils.find_common_indices(self.meshes[0].geometry.x, self.meshes[1].geometry.x)
             offset = first_mesh_size
             
-            for i in range(self.meshes[1].shape[0]):
+            for i in range(self.meshes[1].geometry.x.shape[0]):
                 if i in common_indices[1]:
                     idx = np.where(common_indices[1] == i)[0][0]
                     self.node_mapping[i + offset] = self.node_mapping[common_indices[0][idx]]
@@ -137,7 +137,7 @@ class SetStructure:
                     self.node_mapping[i + offset] = current_index
                     current_index += 1
             
-            self.total_nodes = sum(m.shape[0] for m in self.meshes) - len(common_indices[0])
+            self.total_nodes = sum(m.geometry.x.shape[0] for m in self.meshes) - len(common_indices[0])
         else:
             self.total_nodes = first_mesh_size
     
@@ -153,7 +153,7 @@ class SetStructure:
             else:
                 indices.update(self.node_mapping[idx + offset] for idx in mesh_indices)
             
-            offset += mesh.shape[0]
+            offset += mesh.geometry.x.shape[0]
         
         return np.array(sorted(list(indices)))
     
@@ -254,3 +254,51 @@ class SetStructure:
             prop_map.update(dict.fromkeys(symmetric_elements, prop_map[idx]))
         
         return dict(sorted(prop_map.items()))
+    
+    def show_structure(self):
+        import pyvista
+        from dolfinx.plot import vtk_mesh
+
+        colors = [
+            [67, 75, 217],    # Azul
+            [217, 67, 70],    # Rojo
+            [97, 213, 157],   # Verde
+            [213, 213, 97]    # Amarillo
+        ]
+
+        p = pyvista.Plotter()
+        p.set_background('#1f1f1f')
+        p.add_axes(color='w')
+
+        for mesh_i, props_i in zip(self.meshes, self.props):
+            tdim = mesh_i.topology.dim
+            num_cells_local = mesh_i.topology.index_map(tdim).size_local
+            topology, cell_types, x = vtk_mesh(mesh_i, tdim, np.arange(num_cells_local, dtype=np.int32))
+            grid = pyvista.UnstructuredGrid(topology, cell_types, x).extract_surface(nonlinear_subdivision=0)
+
+            has_diameters = hasattr(props_i, 'diameters')
+            has_materials = hasattr(props_i, 'materials')
+
+            if has_diameters:
+                line_widths = np.array([diameter for diameter in props_i.diameters.values()])        
+                line_widths = np.exp(line_widths * 250)
+
+            if has_materials:
+                marker = np.array([np.array(colors[material.creation_number])/255 
+                                   for material in props_i.materials.values()])
+                grid.cell_data["colors"] = marker
+            
+                for cell_id in range(num_cells_local):
+                    if has_diameters:
+                        p.add_mesh(grid.extract_cells(cell_id), 
+                                color=marker[cell_id], 
+                                line_width=line_widths[cell_id])
+                    else:
+                        p.add_mesh(grid.extract_cells(cell_id), 
+                                color=marker[cell_id])
+            else:
+                 p.add_mesh(grid)
+        
+        p.show_axes()
+        p.view_xy()
+        p.show()
