@@ -13,7 +13,7 @@ def set_matrix_prime(matrix, T):
     n_x = matrix_prime.getSize()[0]
     n_y = matrix_prime.getSize()[1]
     
-    values  = matrix_prime.getValues(range(n_x), range(n_y))
+    values = matrix_prime.getValues(range(n_x), range(n_y))
     
     rounded_values = np.round(values, 15)
     matrix_round = MatExtended().create()
@@ -24,24 +24,14 @@ def set_matrix_prime(matrix, T):
     matrix_round.assemblyEnd()    
     return matrix_round
 
-def wave_vector(meshes, NINT):
-    
+def wave_vector(structure, NINT):
     NINT = int(NINT/3) + 1
     
-    x_min = float('inf')
-    x_max = float('-inf')
-    y_min = float('inf')
-    y_max = float('-inf')
-    
-    if not isinstance(meshes, (list, tuple)):
-        meshes = [meshes]
-    
-    for mesh in meshes:
-        x = mesh.geometry.x
-        x_min = min(x_min, np.min(x[:, 0]))
-        x_max = max(x_max, np.max(x[:, 0]))
-        y_min = min(y_min, np.min(x[:, 1]))
-        y_max = max(y_max, np.max(x[:, 1]))
+    # Use structure limits instead of computing them from meshes
+    x_min = structure.x_min
+    x_max = structure.x_max
+    y_min = structure.y_min
+    y_max = structure.y_max
     
     Lx = x_max - x_min
     Ly = y_max - y_min
@@ -61,39 +51,54 @@ def wave_vector(meshes, NINT):
     
     return thetax, thetay
 
-
-def eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5,
-              tol: float = 1e-10,
-              max_it: int = 200,
-              opt_mode = False):
-
-    thetax, thetay = wave_vector(mesh, NINT)
-    T_k = T_matrix(mesh)
+def eig_bands(structure, mass_matrix, stiffness_matrix, mesh_index=0, NINT=20, N_eig=5,
+              tol: float = 1e-10, max_it: int = 200, opt_mode=False):
+    
+    thetax, thetay = wave_vector(structure, NINT)
+    # Create T_matrix for specific mesh from structure
+    T_k = T_matrix(structure)
     bands = np.zeros((len(thetax), N_eig))
-       
+    
+    if opt_mode:
+        nn = structure.total_nodes * 2
+        phis = np.zeros((len(thetax), N_eig, nn))
+    
     for i, (x, y) in enumerate(zip(thetax, thetay)):
         T = T_k(x, y)
         M = set_matrix_prime(mass_matrix, T)
         K = set_matrix_prime(stiffness_matrix, T)
         
-        eigenvalues, _ = solve_generalized_eigenvalue_problem(
+        eigenvalues, eigenvectors = solve_generalized_eigenvalue_problem(
             K,
             M,
             nev=N_eig,
-            tol= tol,
-            max_it= max_it,
-            )
+            tol=tol,
+            max_it=max_it,
+        )
         
         bands[i,:] = np.sqrt(np.abs(np.real(eigenvalues[:N_eig])))
+        
+        if opt_mode:
+            phis[i,:,:] = T.matMult(eigenvectors[:N_eig])
+    
+    if opt_mode:
+        return bands, phis
 
     return bands
+
+def bandgap(n, structure, mass_matrix, stiffness_matrix, mesh_index=0, NINT=20, N_eig=5, 
+            plot=True, normalized=1/(2 * np.pi)/1000, tol: float = 1e-10, max_it: int = 200):
     
-def bandgap(n, mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5, plot = True,
-            normalized = 1/(2 * np.pi)/1000,
-            tol: float = 1e-10,
-            max_it: int = 200,):
-    
-    bands = eig_bands(mesh, mass_matrix, stiffness_matrix, NINT = NINT, N_eig= N_eig, tol = tol, max_it= max_it) * normalized
+    bands = eig_bands(
+        structure, 
+        mass_matrix, 
+        stiffness_matrix, 
+        mesh_index=mesh_index,
+        NINT=NINT, 
+        N_eig=N_eig, 
+        tol=tol, 
+        max_it=max_it
+    ) * normalized
     
     maximo = np.max(bands[:, n - 1])
     minimo = np.min(bands[:, n])
@@ -105,68 +110,36 @@ def bandgap(n, mesh, mass_matrix, stiffness_matrix, NINT = 20, N_eig= 5, plot = 
     
     return delta, medium_frequency, bands
 
-
 def plot_bands(data, n):
     fig, ax = plt.subplots()
     
     x_lim = data.shape[0]
 
-    # Usamos el argumento `color` para especificar el color azul
     ax.plot(data, color='blue')
+    ax.set_xlim([0, x_lim-1])
+    ax.set_ylim([0, np.max(data)])
     
-    # # Establecemos los límites de los ejes
-    ax.set_xlim([0, x_lim-1])  # Límites del eje x
-    ax.set_ylim([0, np.max(data)])  # Límites del eje y
-    
-    # Calcular maximo, minimo, delta y media para la zona rellena
-    maximo = np.max(data[:,n-1])  # Maximo de la columna n (Python usa índices 0-basados)
-    minimo = np.min(data[:,n])    # Minimo de la columna n+1
+    maximo = np.max(data[:,n-1])
+    minimo = np.min(data[:,n])
     delta = minimo - maximo
     media = (maximo + minimo) / 2
     
-    # Añadir texto en la gráfica
     txt = r'$\Delta\omega =$ ' + str(round(delta, 2)) + ' [kHz]'
     ax.text((x_lim-1)/2, media, txt, fontsize=12, ha='center', va='center', 
             color='black', weight='bold', style='italic')
     
-    # # Rellenar el área entre maximo y minimo
     ax.fill([0, x_lim, x_lim, 0], [minimo, minimo, maximo, maximo], 'k', 
             linestyle='none', alpha=0.25)
     
-    # Añadir líneas horizontales en maximo y minimo
     ax.plot([0, x_lim], [maximo, maximo], 'k-', linewidth=0.1)
     ax.plot([0, x_lim], [minimo, minimo], 'k-', linewidth=0.1)
     
-    # # Añadir la grilla
     ax.grid(True)
-    
-    # # Título de la gráfica con LaTeX habilitado
     ax.set_title(rf'n = {n}', fontsize=12)
-    
-    # Etiquetas de los ejes con formato LaTeX
     ax.set_xlabel(r'Wave vector', fontsize=12)
     ax.set_ylabel(r'Frequency [kHz]', fontsize=12)
     
-    # Establecemos las posiciones de las etiquetas en el eje x\
-    ax.set_xticks(np.linspace(0, x_lim-1, 4))  # Posiciones específicas en el eje x
-    
-    # Asignamos las etiquetas del eje x
+    ax.set_xticks(np.linspace(0, x_lim-1, 4))
     ax.set_xticklabels([r'$\Gamma$', r'$X_{1}$', r'$M_{1}$', r'$\Gamma$'])
     
     plt.show()
-    
-
-if __name__ == "__main__":
-    from dolfinx import mesh
-    from mpi4py import MPI
-    n = 2
-    msh = mesh.create_unit_square(MPI.COMM_WORLD,n,n)
-    T = T_matrix(msh)
-    T = T(30,30)
-    n_x = T.getSize()[0]
-    n_y = T.getSize()[1]
-    print(n_x, n_y)
-    print(T.getValues(range(n_x), range(n_y)))
-    
-    
-    
