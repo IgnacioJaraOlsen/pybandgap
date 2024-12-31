@@ -7,11 +7,9 @@ pybandgap/T_matrix.py
 pybandgap/__init__.py
 pybandgap/bandgap.py
 pybandgap/eigenvalue_solver.py
-pybandgap/mass_and_stiffness_matrix.py
-pybandgap/multi_mesh.py
-pybandgap/plot_mesh.py
+pybandgap/fem.py
+pybandgap/sensitivity.py
 pybandgap/set_structure.py
-pybandgap/set_structure_new.py
 pybandgap.egg-info/PKG-INFO
 pybandgap.egg-info/SOURCES.txt
 pybandgap.egg-info/dependency_links.txt
