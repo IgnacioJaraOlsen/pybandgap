@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Callable, Union, Optional, Dict
 from dolfinx.fem import Function, functionspace, form
-from dolfinx.fem.petsc import  assemble_matrix, assemble_vector
+from dolfinx.fem.petsc import  assemble_matrix
 import ufl
 import inspect
 import numpy as np
