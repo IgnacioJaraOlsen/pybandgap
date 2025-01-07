@@ -2,12 +2,14 @@ from dataclasses import dataclass
 from typing import Callable, Union, Optional, Dict
 from dolfinx.fem import Function, functionspace, form
 from dolfinx.fem.petsc import  assemble_matrix
+from dolfinx.mesh import compute_midpoints
+from shapely import Polygon, Point
+from utility import geometry_utility
 import ufl
 import inspect
 import numpy as np
-from mpi4py import MPI
 
-np.set_printoptions(precision=3, suppress=False, formatter={'float': '{:.2f}'.format})
+#np.set_printoptions(precision=3, suppress=False, formatter={'float': '{:.3f}'.format})
 
 @dataclass
 class Fem:
@@ -18,6 +20,7 @@ class Fem:
         self.V = functionspace(self.mesh, ("CG", 1, (2,)))
         self.V0 = functionspace(self.mesh, ("DG", 0))
         self.u, self.v = ufl.TrialFunction(self.V), ufl.TestFunction(self.V)
+        self.props = {}
     
         parameter_names = self.parameters.keys()
 
@@ -31,7 +34,7 @@ class Fem:
                     for param_name, param in parameters.items()
                     if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
                 }
-                setattr(self, name, param_dict)
+                self.props[name] = param_dict
     
     def eval(self, name):
         if name not in self.parameters.keys():
@@ -39,7 +42,7 @@ class Fem:
         value = self.parameters.get(name)
         if not callable(value):
             return value
-        param_dict = getattr(self, name)
+        param_dict = self.props[name]
         return value(*param_dict.values())
 
     def mass_ufl(self):
@@ -81,7 +84,7 @@ class Fem:
     def get_d_matrix(self, name, param, element = 0, variable = 'x'):
         elements = Function(self.V0)
         elements.x.array[element] = 1
-        param_func = getattr(self, f"{param}", None)[variable]
+        param_func = self.props[param][variable]
 
         if name in ('m','mass'):
             a = self.mass_ufl()
@@ -92,67 +95,89 @@ class Fem:
         d_matrix = assemble_matrix(form(da))
         d_matrix.assemble()
         return d_matrix
-
-
-if __name__ == '__main__':
-
-    def create_linear_function(a1: float, a2: float) -> Callable:
-        """Create a linear function between two values."""
-        return lambda x: (a2 - a1) * x + a1
     
-    import dolfinx
-    from mpi4py import MPI
-    from dolfinx import io
-    import gmsh
+    def get_nodes_element(self, index):
+        mesh = self.mesh
+        return mesh.geometry.x[mesh.topology.connectivity(mesh.topology.dim, 0).links(index)]
 
-    gmsh.initialize()
-    gmsh.option.setNumber("General.Terminal", 0) 
+    def get_midpoints(self):
+        mesh = self.mesh
+        tdim = mesh.topology.dim
+        mesh_entities = mesh.topology.index_map(tdim).size_local
+        return compute_midpoints(mesh, tdim, np.arange(mesh_entities))
 
-    p1 = gmsh.model.geo.addPoint(0, 0, 0, 1.0) # x, y, z, tamaño característico
-    p2 = gmsh.model.geo.addPoint(1, 0, 0, 1.0)
-    p3 = gmsh.model.geo.addPoint(2, 0, 0, 1.0)
-    linea = gmsh.model.geo.addLine(p1, p2)
-    linea2 = gmsh.model.geo.addLine(p2, p3)
+    def get_elements_in_perimeter(self, perimeter):
+        polygon = Polygon(perimeter)
+        centers = self.get_midpoints()
+        index = [i for i, point in enumerate(centers) if polygon.intersects(Point(point))]
+        self.IBZ_elements = index
+        return index
 
-    gmsh.model.geo.synchronize()
-
-    gmsh.model.add_physical_group(1, [linea, linea2], 2)
-
-    # Sincronizar para aplicar los cambios
-    gmsh.model.geo.synchronize()
-    for line in gmsh.model.getEntities(1):
-        line_tag = line[1]
-        gmsh.model.mesh.set_transfinite_curve(line_tag, 2)
-
-    gmsh.model.geo.synchronize()
-
-    gmsh.model.mesh.generate(dim=1)
-
-    mesh, markers, facets = io.gmshio.model_to_mesh(gmsh.model, MPI.COMM_WORLD, 0, gdim=2)
-
-    gmsh.finalize()
-
-    print(type(mesh))
-
-    E_func = create_linear_function(a1=10, a2=20)
-    A_func = create_linear_function(a1=1, a2=5)
-
-    fem = Fem(mesh, parameters = {'E': E_func,
-                                  'A': A_func})
-    fem.E['x'].x.array[:] = 1
-    fem.A['x'].x.array[:] = 0
-
-    # Get the stiffness and mass matrices
-    stiffness_matrix = fem.get_matrix('k')
-    mass_matrix = fem.get_matrix('m')
-
-    print("Stiffness matrix:")
-    print(stiffness_matrix[:,:])
-
-    print("Mass matrix:")
-    print(mass_matrix[:,:])
-
-    dmass_matrix = fem.get_d_matrix('k','E', 1)
-
-    print("dMass matrix:")
-    print(dmass_matrix[:,:])
+    def get_Symmetry_Map(self, symmetries, center):
+        
+        indexes = self.IBZ_elements
+        
+        angles = symmetries['angles'][::-1]
+        elements = np.array(range(self.mesh.topology.index_map(self.mesh.topology.dim).size_local))
+        
+        def f_id_element(idx):
+            nodes = np.sort(self.get_nodes_element(idx), axis=0).ravel()
+            id = nodes
+            
+            # Add center point
+            centers = self.get_midpoints()[idx]
+            id = np.hstack((id, centers))
+                
+            # Add slope
+            slopes = geometry_utility.calculate_slope(self.get_nodes_element(idx))
+            id = np.hstack((id, slopes))
+            
+            return id
+        
+        def calculate_symmetric_id(coords_element, angle):
+            # Project nodes
+            f = lambda x: geometry_utility.calculate_symmetric_point(x, center, angle)
+            nodes = np.sort(np.array(list(map(f, coords_element))), axis=0).ravel()
+            id = nodes
+            
+            # Project and add center point
+            center_point = np.mean(coords_element, axis=0)
+            symmetric_center = f(center_point)
+            id = np.hstack((id, symmetric_center))
+            
+            # Calculate and add slope of projected element
+            symmetric_coords = np.array(list(map(f, coords_element)))
+            symmetric_slope = geometry_utility.calculate_slope(symmetric_coords)
+            id = np.hstack((id, symmetric_slope))
+            
+            return id
+        
+        id_elements = np.array(list(map(f_id_element, elements)))
+        
+        def arrays_match(arr1, arr2, rtol=1e-10, atol=1e-10):
+            if arr1.shape != arr2.shape:
+                return False
+            return np.all(np.isclose(arr1, arr2, rtol=rtol, atol=atol))
+        
+        S = []
+        
+        for idx in indexes:
+            elements = [idx]
+            for angle in angles:
+                new_elements = []
+                for element in elements:
+                    coords_element = self.get_nodes_element(element)
+                    id_element = calculate_symmetric_id(coords_element, angle)
+                    new_idx = [i for i, row in enumerate(id_elements) if arrays_match(row, id_element)]
+                    new_elements.extend(new_idx)
+                elements.extend(new_elements)
+                new_elements = []
+            
+            column = np.zeros(len(id_elements), dtype=int)
+            column[np.array(elements)] = 1
+            
+            S.append(column.reshape(-1, 1))
+        
+        S = np.hstack(S)
+        
+        return S

@@ -10,19 +10,19 @@ def set_matrix_prime(matrix, T):
     M = matrix.copy()
     matrix_prime = T_T.matMatMult(M, T)
     
-    n_x = matrix_prime.getSize()[0]
-    n_y = matrix_prime.getSize()[1]
+    # n_x = matrix_prime.getSize()[0]
+    # n_y = matrix_prime.getSize()[1]
     
-    values = matrix_prime.getValues(range(n_x), range(n_y))
+    # values = matrix_prime.getValues(range(n_x), range(n_y))
     
-    rounded_values = np.round(values, 15)
-    matrix_round = MatExtended().create()
-    matrix_round.setSizes((n_x, n_y))
-    matrix_round.setType(PETSc.Mat.Type.AIJ)
-    matrix_round.setValues(range(n_x), range(n_y), rounded_values)
-    matrix_round.assemblyBegin()
-    matrix_round.assemblyEnd()    
-    return matrix_round
+    # rounded_values = np.round(values, 15)
+    # matrix_round = MatExtended().create()
+    # matrix_round.setSizes((n_x, n_y))
+    # matrix_round.setType(PETSc.Mat.Type.AIJ)
+    # matrix_round.setValues(range(n_x), range(n_y), rounded_values)
+    # matrix_round.assemblyBegin()
+    # matrix_round.assemblyEnd()    
+    return matrix_prime
 
 def wave_vector(structure, NINT):
     NINT = int(NINT/3) + 1
