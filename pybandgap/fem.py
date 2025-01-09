@@ -1,184 +1,184 @@
-import numpy as np
-from petsc4py import PETSc
-import dolfinx.fem.petsc
+from dataclasses import dataclass
+from typing import Callable, Union, Optional, Dict
+from dolfinx.fem import Function, functionspace, form
+from dolfinx.fem.petsc import  assemble_matrix
+from dolfinx.mesh import compute_midpoints
+from shapely import Polygon, Point
+from pybandgap.utility import geometry_utility
 import ufl
+import inspect
+import numpy as np
 
-def truss_stiffness(u, v, E, area):
-    epsilon = lambda u: ufl.sym(ufl.grad(u))
-    sigma = lambda u: ufl.tr(epsilon(u)) * ufl.Identity(len(u))
+#np.set_printoptions(precision=3, suppress=False, formatter={'float': '{:.3f}'.format})
+
+@dataclass
+class Fem:
+    mesh: ufl.Mesh
+    parameters: Dict[str, Optional[Union[float, Callable]]] = None
+
+    def __post_init__(self):
+        self.V = functionspace(self.mesh, ("CG", 1, (2,)))
+        self.V0 = functionspace(self.mesh, ("DG", 0))
+        self.u, self.v = ufl.TrialFunction(self.V), ufl.TestFunction(self.V)
+        self.props = {}
     
-    return E * area * ufl.inner(sigma(u), epsilon(v)) * ufl.dx
+        parameter_names = self.parameters.keys()
 
-def truss_mass(u, v, density, area_func):
-    return density * area_func * ufl.inner(u, v) * ufl.dx
-
-def plate_stiffness(u, v, E, nu, thickness):
-    mu = E / (2 * (1 + nu))
-    lambda_ = E * nu / ((1 + nu) * (1 - 2 * nu))
-        
-    epsilon = lambda u: ufl.sym(ufl.grad(u))
-    sigma = lambda u: lambda_ * ufl.tr(epsilon(u)) * ufl.Identity(len(u)) + 2.0 * mu * epsilon(u)
-        
-    return thickness * ufl.inner(sigma(u), epsilon(v)) * ufl.dx
-
-def plate_mass(u, v, density, thickness):
-    return density * thickness * ufl.inner(u, v) * ufl.dx
-
-def mass_and_stiffness_matrix(mesh, props):
-    V0 = dolfinx.fem.functionspace(mesh, ("DG", 0))
-    V = dolfinx.fem.functionspace(mesh, ("CG", 1, (2,)))
-    u = ufl.TrialFunction(V)
-    v = ufl.TestFunction(V)
-
-    E_func = dolfinx.fem.Function(V0)
-    E_func.x.array[:] = [material.young_modulus for material in props.materials.values()]
+        for name in parameter_names:
+            value = self.parameters.get(name)
+            if callable(value):
+                signature = inspect.signature(value)
+                parameters = signature.parameters
+                param_dict = {
+                    param_name: Function(self.V0)
+                    for param_name, param in parameters.items()
+                    if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+                }
+                self.props[name] = param_dict
     
-    density_func = dolfinx.fem.Function(V0)
-    density_func.x.array[:] = [material.density for material in props.materials.values()]
-    
-    if mesh.topology.dim == 1:
-        if not hasattr(props, 'diameters'):
-            raise ValueError("add diameters_map in props")
-        area_func = dolfinx.fem.Function(V0)
-        area_func.x.array[:] = [np.pi * diameter**2 /4 for diameter in props.diameters.values()]
-        
-        stiffness_form = truss_stiffness(u, v, E_func, area_func)
-        mass_form = truss_mass(u, v, density_func, area_func)
-        
-    else:
-        nu_func = dolfinx.fem.Function(V0)
-        nu_func.x.array[:] = [material.poisson_ratio for material in props.materials.values()]
+    def eval(self, name):
+        if name not in self.parameters.keys():
+            return 1
+        value = self.parameters.get(name)
+        if not callable(value):
+            return value
+        param_dict = self.props[name]
+        return value(*param_dict.values())
 
-        # Create thickness function, default to 1 if not specified
-        thickness_func = dolfinx.fem.Function(V0)
-        if hasattr(props, 'thicknesses'):
-            thickness_func.x.array[:] = [thickness for thickness in props.thicknesses.values()]
+    def mass_ufl(self):
+        rho = self.eval('rho')
+        if self.mesh.topology.dim == 1:
+            A = self.eval('A')
+            return A * rho * ufl.inner(self.u, self.v)
         else:
-            thickness_func.x.array[:] = np.ones(len(E_func.x.array))
+            thickness = self.eval('thickness')
+            return thickness * rho * ufl.inner(self.u, self.v)
 
-        stiffness_form = plate_stiffness(u, v, E_func, nu_func, thickness_func)
-        mass_form = plate_mass(u, v, density_func, thickness_func)
-
-    mass_matrix = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(mass_form))
-    mass_matrix.assemble()
     
-    stiffness_matrix = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(stiffness_form))
-    stiffness_matrix.assemble()
-    
-    return mass_matrix, stiffness_matrix
-
-def global_matrixes(set_structure):
-    """
-    Create global mass and stiffness matrices from a SetStructure object.
-    
-    Args:
-        set_structure: SetStructure object containing meshes and their properties
+    def stiffness_ufl(self):
+        E = self.eval('E')
+        epsilon = lambda u: ufl.sym(ufl.grad(u))
         
-    Returns:
-        tuple: (M_global, K_global) Global mass and stiffness matrices
-    """
-    mass_matrices = []
-    stiffness_matrices = []
-    sizes = []
-    sparsity_patterns = []
-
-    # Generate local matrices for each mesh and analyze sparsity patterns
-    for mesh, prop in zip(set_structure.meshes, set_structure.props):
-        mass, stiffness = mass_and_stiffness_matrix(mesh, prop)
-        mass_matrices.append(mass)
-        stiffness_matrices.append(stiffness)
-        sizes.append(mass.getSize()[0])
+        if self.mesh.topology.dim == 1:
+            A = self.eval('A')
+            sigma = lambda u: A * E * ufl.tr(epsilon(u)) * ufl.Identity(len(u))
+        else:
+            nu = self.eval('nu')
+            mu = E / (2 * (1 + nu))
+            lambda_ = E * nu / ((1 + nu) * (1 - 2 * nu))
+            sigma = lambda u: lambda_ * ufl.tr(epsilon(u)) * ufl.Identity(len(u)) + 2.0 * mu * epsilon(u)
         
-        # Get sparsity pattern for this mesh's matrices
-        pattern = {}
-        for row in range(sizes[-1]):
-            cols, _ = mass.getRow(row)
-            pattern[row] = set(cols)  # Store column indices for each row
-        sparsity_patterns.append(pattern)
+        return ufl.inner(sigma(self.u), epsilon(self.v))
 
-    # Create global matrices with proper size
-    total_size = set_structure.total_nodes * 2  # Multiply by 2 for x,y DOFs
+    def get_matrix(self, name):
+        name = name.lower()
+        if name in ('m','mass'):
+            a = self.mass_ufl() * ufl.dx
+        elif name in ('k', 'stiffness'):
+            a = self.stiffness_ufl() * ufl.dx
+        
+        matrix = assemble_matrix(form(a))
+        matrix.assemble()
+        return matrix
     
-    # Calculate preallocation arrays
-    d_nnz = np.zeros(total_size, dtype=np.int32)  # Diagonal block nonzeros per row
-    o_nnz = np.zeros(total_size, dtype=np.int32)  # Off-diagonal block nonzeros per row
+    def get_d_matrix(self, name, param, element = 0, variable = 'x'):
+        elements = Function(self.V0)
+        elements.x.array[element] = 1
+        param_func = self.props[param][variable]
+
+        if name in ('m','mass'):
+            a = self.mass_ufl()
+        elif name in ('k', 'stiffness'):
+            a = self.stiffness_ufl()
+
+        da = ufl.diff(elements * a * ufl.dx, param_func)
+        d_matrix = assemble_matrix(form(da))
+        d_matrix.assemble()
+        return d_matrix
     
-    # Map local patterns to global patterns for preallocation
-    offset = 0
-    for mesh_idx, pattern in enumerate(sparsity_patterns):
-        size = sizes[mesh_idx]
-        for local_row in range(size):
-            # Map local row to global row
-            node_idx = local_row // 2
-            mapped_node = set_structure.node_mapping[node_idx + offset]
-            global_row = mapped_node * 2 + (local_row % 2)
+    def get_nodes_element(self, index):
+        mesh = self.mesh
+        return mesh.geometry.x[mesh.topology.connectivity(mesh.topology.dim, 0).links(index)]
+
+    def get_midpoints(self):
+        mesh = self.mesh
+        tdim = mesh.topology.dim
+        mesh_entities = mesh.topology.index_map(tdim).size_local
+        return compute_midpoints(mesh, tdim, np.arange(mesh_entities))
+
+    def get_elements_in_perimeter(self, perimeter):
+        polygon = Polygon(perimeter)
+        centers = self.get_midpoints()
+        index = np.array([i for i, point in enumerate(centers) if polygon.intersects(Point(point))])
+        self.IBZ_elements = index
+        return index
+
+    def get_Symmetry_Map(self, symmetries, center):
+        
+        indexes = self.IBZ_elements
+        
+        angles = symmetries['angles'][::-1]
+        elements = np.array(range(self.mesh.topology.index_map(self.mesh.topology.dim).size_local))
+        
+        def f_id_element(idx):
+            nodes = np.sort(self.get_nodes_element(idx), axis=0).ravel()
+            id = nodes
+            # Add center point
+            centers = self.get_midpoints()[idx]
+            id = np.hstack((id, centers))
+
+            if self.mesh.topology.dim == 1:
+                # Add slope
+                slopes = geometry_utility.calculate_slope(self.get_nodes_element(idx))
+                id = np.hstack((id, slopes))
             
-            # Map local columns to global columns
-            local_cols = pattern[local_row]
-            for local_col in local_cols:
-                col_node_idx = local_col // 2
-                mapped_col_node = set_structure.node_mapping[col_node_idx + offset]
-                global_col = mapped_col_node * 2 + (local_col % 2)
-                
-                # Update preallocation counts
-                if abs(mapped_node - mapped_col_node) < size//2:
-                    d_nnz[global_row] += 1
-                else:
-                    o_nnz[global_row] += 1
-                    
-        offset += size // 2
-
-    # Create matrices with proper preallocation
-    M_global = PETSc.Mat().createAIJ([total_size, total_size])
-    K_global = PETSc.Mat().createAIJ([total_size, total_size])
-    
-    M_global.setPreallocationNNZ([d_nnz, o_nnz])
-    K_global.setPreallocationNNZ([d_nnz, o_nnz])
-    
-    # Allow runtime allocation if our preallocation estimate is off
-    M_global.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
-    K_global.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
-
-    M_global.zeroEntries()
-    K_global.zeroEntries()
-
-    # Assembly loop
-    offset = 0
-    for mesh_idx, (mass, stiff) in enumerate(zip(mass_matrices, stiffness_matrices)):
-        size = sizes[mesh_idx]
+            return id
         
-        for row in range(size):
-            # Map local row to global row
-            node_idx = row // 2
-            mapped_node = set_structure.node_mapping[node_idx + offset]
-            global_row = mapped_node * 2 + (row % 2)
+        def calculate_symmetric_id(coords_element, angle):
+            # Project nodes
+            f = lambda x: geometry_utility.calculate_symmetric_point(x, center, angle)
+            nodes = np.sort(np.array(list(map(f, coords_element))), axis=0).ravel()
+            id = nodes
             
-            # Mass matrix
-            cols, vals = mass.getRow(row)
-            global_cols = []
-            for col in cols:
-                col_node_idx = col // 2
-                mapped_col_node = set_structure.node_mapping[col_node_idx + offset]
-                global_cols.append(mapped_col_node * 2 + (col % 2))
-                
-            M_global.setValues(global_row, global_cols, vals, addv=True)
+            # Project and add center point
+            center_point = np.mean(coords_element, axis=0)
+            symmetric_center = f(center_point)
+            id = np.hstack((id, symmetric_center))
             
-            # Stiffness matrix
-            cols, vals = stiff.getRow(row)
-            global_cols = []
-            for col in cols:
-                col_node_idx = col // 2
-                mapped_col_node = set_structure.node_mapping[col_node_idx + offset]
-                global_cols.append(mapped_col_node * 2 + (col % 2))
+            # Calculate and add slope of projected element
+            if self.mesh.topology.dim == 1:
+                symmetric_coords = np.array(list(map(f, coords_element)))
+                symmetric_slope = geometry_utility.calculate_slope(symmetric_coords)
+                id = np.hstack((id, symmetric_slope))
                 
-            K_global.setValues(global_row, global_cols, vals, addv=True)
+            return id
         
-        offset += size // 2
-
-    # Assemble final matrices
-    M_global.assemblyBegin()
-    M_global.assemblyEnd()
-    K_global.assemblyBegin()
-    K_global.assemblyEnd()
-
-    return M_global, K_global
+        id_elements = np.array(list(map(f_id_element, elements)))
+        
+        def arrays_match(arr1, arr2, rtol=1e-10, atol=1e-10):
+            if arr1.shape != arr2.shape:
+                return False
+            return np.all(np.isclose(arr1, arr2, rtol=rtol, atol=atol))
+        
+        S = []
+        
+        for idx in indexes:
+            elements = [idx]
+            for angle in angles:
+                new_elements = []
+                for element in elements:
+                    coords_element = self.get_nodes_element(element)
+                    id_element = calculate_symmetric_id(coords_element, angle)
+                    new_idx = [i for i, row in enumerate(id_elements) if arrays_match(row, id_element)]
+                    new_elements.extend(new_idx)
+                elements.extend(new_elements)
+                new_elements = []
+            
+            column = np.zeros(len(id_elements), dtype=int)
+            column[np.array(elements)] = 1
+            
+            S.append(column.reshape(-1, 1))
+        
+        S = np.hstack(S)
+        
+        return S

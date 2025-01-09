@@ -1,19 +1,10 @@
-from utility import geometry_utility
+from pybandgap.utility import geometry_utility
 from scipy.sparse import csr_matrix
 from dataclasses import dataclass
 from typing import List, Union
 from petsc4py import PETSc
-from fem import Fem
+from pybandgap.fem import Fem
 import numpy as np
-
-class MatExtended(PETSc.Mat):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-    
-    def conjugate_transpose(self):
-        mat_transpose = self.transpose()
-        mat_conjugate_transpose = mat_transpose.conjugate()
-        return mat_conjugate_transpose
 
 @dataclass
 class SetStructure:
@@ -77,13 +68,13 @@ class SetStructure:
 
     def _map_element_indexes(self):
         global_elements = {}
-        current_global_index = 0
+        self.total_elements = 0
         for i, fem in enumerate(self.fems):
             mesh = fem.mesh
-            indexes = np.array(range(mesh.topology.index_map(mesh.topology.dim).size_local)) + current_global_index
+            indexes = np.array(range(mesh.topology.index_map(mesh.topology.dim).size_local)) + self.total_elements
             global_elements[i] = indexes
-            current_global_index = len(indexes)
-            
+            self.total_elements += len(indexes)
+  
         self.global_elements = global_elements
 
     def _find_limits(self):
@@ -153,7 +144,7 @@ class SetStructure:
         
         T_csr = csr_matrix(T_matrix)
         
-        T = MatExtended().createAIJ(size=(2 * num_nodes_x, T_csr.shape[1]), csr=(T_csr.indptr, T_csr.indices, T_csr.data))
+        T = PETSc.Mat().createAIJ(size=(2 * num_nodes_x, T_csr.shape[1]), csr=(T_csr.indptr, T_csr.indices, T_csr.data))
         T.assemble()
         
         self.T = T
@@ -246,8 +237,14 @@ class SetStructure:
         self.IBZ_points = np.vstack((points, points[0]))
 
     def get_elements_IBZ(self):
-        for fem in self.fems:
-            print(fem.get_elements_in_perimeter(self.IBZ_points))
+        IBZ_elements = {}
+        offset = 0
+        for i, fem in enumerate(self.fems):
+            mesh = fem.mesh
+            IBZ_elements[i] = fem.get_elements_in_perimeter(self.IBZ_points)+ offset
+            N_elements = mesh.topology.index_map(mesh.topology.dim).size_local
+            offset += N_elements
+        return IBZ_elements
 
     def set_props(self, name, variable, index, data):
         if not isinstance(data, (np.ndarray, int)):
@@ -280,24 +277,50 @@ class SetStructure:
                     data_IBZ = fem.props[prop][variable].x.array[fem.IBZ_elements]
                     fem.props[prop][variable].x.array[:] = S @ data_IBZ
     
-    def Mass_and_Stiffness_derivate(self, prop, element, variable):
+    def Mass_and_Stiffness_derivate(self, element, prop, variable):
         n_index = self.total_nodes * 2
         dM = self.initialize_global_matrices(n_index)
         dK = self.initialize_global_matrices(n_index)
         
         fem_number = next((k for k, v in self.global_elements.items() if element in v), None)
 
-        dm = self.fems[fem_number].get_d_matrix('m', prop, element, variable = variable)
-        dk = self.fems[fem_number].get_d_matrix('k', prop, element, variable = variable)
+        fem = self.fems[fem_number]
         
-        indices = self.fems[fem_number].global_node_indices
+        if variable in fem.props[prop]:
+            dm = fem.get_d_matrix('m', prop, element, variable = variable)
+            dk = fem.get_d_matrix('k', prop, element, variable = variable)
         
-        dM.setValues(
-                indices, indices, dm, addv=PETSc.InsertMode.ADD_VALUES
-            )
+            indices = self.fems[fem_number].global_node_indices
+            indices = np.hstack((indices*2, indices*2 + 1))
+            dM.setValues(
+                    indices, indices, dm[:,:], addv=PETSc.InsertMode.ADD_VALUES
+                )
 
-        dK.setValues(
-                indices, indices, dm, addv=PETSc.InsertMode.ADD_VALUES
-            )
+            dK.setValues(
+                    indices, indices, dk[:,:], addv=PETSc.InsertMode.ADD_VALUES
+                )
+            
+        dM.assemble()
+        dK.assemble()
         
         return dM, dK
+    
+    def global_Symmetry_Map(self):
+        all_S = []
+        for fem in self.fems:
+            all_S.append(fem.get_Symmetry_Map(self.symmetries, self.mid_point))
+        
+        global_S = all_S[0]
+        
+        if len(self.fems)>1:
+            for S in all_S[1:]:
+                rows = global_S.shape[0] + S.shape[0] - 1
+                columns = global_S.shape[1] + S.shape[1] - 1
+                temp_global_S = np.zeros((rows, columns))
+                
+                temp_global_S[:global_S.shape[0], :global_S.shape[1]] = global_S
+                temp_global_S[:S.shape[0], :S.shape[1]] = S
+
+                global_S = temp_global_S
+
+        return global_S

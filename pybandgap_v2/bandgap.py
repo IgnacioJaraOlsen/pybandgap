@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from petsc4py import PETSc
 from typing import Literal
 from dataclasses import dataclass
-from structure import SetStructure
+from pybandgap.structure import SetStructure
 from pybandgap.eigenvalue_solver import solve_generalized_eigenvalue_problem
 
 
@@ -15,11 +16,15 @@ class BandGap:
     tol: float = 1e-10
     max_iter: int = 1000
     num_eigs: int = 6
-    mode: Literal["simulate", "optimize", "s", 'o'] = "simulate"
+    mode: Literal["simulate", "optimize", "s", "0"] = "simulate"
+    parameters_optimize = None
 
     def __post_init__(self):
         self._wave_vector()
         self.bands = np.zeros((len(self.thetax), self.num_eigs))
+        if self.mode in ("simulate", "o"):
+            columns = self.structure.total_nodes * 2
+            self.phis = np.zeros((len(self.thetax), self.num_eigs, columns))
     
     def _wave_vector(self):
 
@@ -41,13 +46,15 @@ class BandGap:
         self.thetax = points[0,:] * 2* np.pi / (2 * np.max(points[0,:]))**2
         self.thetay = points[1,:] * 2* np.pi / (2 * np.max(points[1,:]))**2
                    
-    def set_matrix_prime(self, T_k):
-        T = T_k.copy()
-        T_T = T_k.copy().conjugate_transpose()
-        M_prime = T_T.matMatMult(self.structure.M, T)
-        T = T_k.copy()
-        T_T = T_k.copy().conjugate_transpose()
-        K_prime = T_T.matMatMult(self.structure.K, T)
+    def set_matrix_prime(self, T):
+        T_T = PETSc.Mat()
+        M_prime = PETSc.Mat()
+        K_prime = PETSc.Mat()
+        
+        T.hermitianTranspose(out=T_T)
+        
+        T_T.matMatMult(self.structure.M, T, result = M_prime)
+        T_T.matMatMult(self.structure.K, T, result = K_prime)
         
         return M_prime, K_prime
     
@@ -63,7 +70,7 @@ class BandGap:
             self.bands[i, :] = np.sqrt(np.abs(np.real(eigvals[:self.num_eigs])))
             
             if self.mode == "optimize" or self.mode == "o":
-                self.phis[i, :, :] = T_k.matMult(eigvecs)
+                self.phis[i, :] = np.array([T_k*eigvec for eigvec in eigvecs[:self.num_eigs]])
     
     
     def plot_bandgap(self):
@@ -105,14 +112,46 @@ class BandGap:
         ax.set_xticklabels([r'$\Gamma$', r'$X_{1}$', r'$M_{1}$', r'$\Gamma$'])
         
         plt.show()
+
+    @staticmethod
+    def compute_eigenvalue_derivative(dK_dx, dM_dx, eigenvector, eigenvalue, M):
+
+        temp_vec1 = eigenvector.duplicate()
+        temp_vec2 = eigenvector.duplicate()
+
+        # dK_dx * u
+        dK_dx.mult(eigenvector, temp_vec1)
+
+        # dM_dx * u
+        dM_dx.mult(eigenvector, temp_vec2)
+        
+        #u^T * (dK_dx - ω^2 * dM_dx) * u
+        numerator1 = eigenvector.dot(temp_vec1) # u^T * (dK_dx * u)
+        numerator2 = eigenvalue**2 * eigenvector.dot(temp_vec2) # ω^2 * u^T * (dM_dx * u)
+        numerator = numerator1 - numerator2
+
+        # Calcular denominador: 2 * ω * u^T * M * u
+        temp_vec3 = temp_vec2.duplicate()
+        M.mult(eigenvector, temp_vec3) # M * u
+        denominator = 2 * eigenvalue * eigenvector.dot(temp_vec3) # 2 * ω * u^T * temp_vec3
+
+        # Calcular la derivada final
+        derivative = numerator / denominator
+        
+        return derivative
+
+    def get_d_w(self, element, prop, variable):
+        d_w = np.array((len(self.thetax), self.num_eigs))
+        dM, dK = self.structure.Mass_and_Stiffness_derivate(element, prop, variable)
+        for i in range(d_w.shape[0]):
+            for j in range(d_w.shape[1]):
+                u = self.phis[i,j,:]
+                u = PETSc.Vec().createWithArray(u)
+                w = self.bands[i,j]
+                d_w[i,j] = self.compute_eigenvalue_derivative(dM, dK, u, w)
+                
+    def objective(self, P):
+        pass
     
-    
-    def eig_value_sensitivities(self, prop, element, variable, i, j):
-        
-        dM, dK = self.structure.Mass_and_Stiffness_derivate(prop, element, variable)
-        
-        w = self.bands[i, j]
-        
-        u = self.phis[i, j, :]
-        
-        dw = u.transpose() * ()
+    def d_objective(self, P, ):
+        pass
