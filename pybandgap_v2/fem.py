@@ -18,6 +18,8 @@ class Fem:
         self.V = functionspace(self.mesh, ("CG", 1, (2,)))
         self.V0 = functionspace(self.mesh, ("DG", 0))
         self.u, self.v = ufl.TrialFunction(self.V), ufl.TestFunction(self.V)
+        
+        self.N_elements = self.mesh.topology.index_map(self.mesh.topology.dim).size_local
         self._get_parameters()
     
     def _get_parameters(self):
@@ -144,7 +146,7 @@ class Fem:
         indexes = self.IBZ_elements
         
         angles = symmetries['angles'][::-1]
-        elements = np.array(range(self.mesh.topology.index_map(self.mesh.topology.dim).size_local))
+        elements = np.array(range(self.N_elements))
         
         def f_id_element(idx):
             nodes = np.sort(self.get_nodes_element(idx), axis=0).ravel()
@@ -207,4 +209,4 @@ class Fem:
         
         S = np.hstack(S)
         
-        return S
+        self.S = S

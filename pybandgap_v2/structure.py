@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from typing import List, Union
 from petsc4py import PETSc
 from pybandgap.fem import Fem
+import pyvista as pv
 import numpy as np
+from dolfinx.plot import vtk_mesh
 
 @dataclass
 class SetStructure:
@@ -22,6 +24,7 @@ class SetStructure:
         self._find_IBZ()
         self._map_structure()
         self._get_boundary_data()
+        self._get_Symmetry_Maps()
         self._set_x_structure()
  
     def _find_limits(self):
@@ -166,10 +169,16 @@ class SetStructure:
                 self.x = np.hstack((self.x, np.random.random(n_parameters)))
                 self.x_map[i][parameter] = np.array(range(n_parameters)) + offset
                 offset += n_parameters
+        
+        self.d_x = np.zeros(len(self.x))
+        
+    def _get_Symmetry_Maps(self):
+        for fem in self.fems:
+            fem.get_Symmetry_Map(self.symmetries, self.mid_point)
     
     def apply_x(self):
         for idx, fem in enumerate(self.fems):
-            S = fem.get_Symmetry_Map(self.symmetries, self.mid_point)
+            S = fem.S
             for param, index in self.x_map[idx].items():
                 data_IBZ = self.x[index]
                 fem.parameters[param].x.array[:] = S @ data_IBZ
@@ -276,20 +285,18 @@ class SetStructure:
             self.assemble_global_matrix(self.K, local_stiffness_matrices, global_indices)
 
 
-    def Mass_and_Stiffness_derivate(self, element, prop, variable):
+    def Mass_and_Stiffness_derivate(self, element, variable, fem_idx):
         n_index = self.total_nodes * 2
         dM = self.initialize_global_matrices(n_index)
         dK = self.initialize_global_matrices(n_index)
         
-        fem_number = next((k for k, v in self.global_elements.items() if element in v), None)
-
-        fem = self.fems[fem_number]
+        fem = self.fems[fem_idx]
         
-        if variable in fem.props[prop]:
-            dm = fem.get_d_matrix('m', prop, element, variable = variable)
-            dk = fem.get_d_matrix('k', prop, element, variable = variable)
+        if variable in fem.parameters:
+            dm = fem.get_d_matrix('m', element, variable = variable)
+            dk = fem.get_d_matrix('k', element, variable = variable)
         
-            indices = self.fems[fem_number].global_node_indices
+            indices = fem.global_node_indices
             indices = np.hstack((indices*2, indices*2 + 1))
             dM.setValues(
                     indices, indices, dm[:,:], addv=PETSc.InsertMode.ADD_VALUES
@@ -304,7 +311,36 @@ class SetStructure:
         
         return dM, dK
     
-    
-    def show_structure(self):
-        
-    
+    def show_structure(self, 
+                    colors=None, 
+                    background=(31, 31, 31)):
+
+        plotter = pv.Plotter()
+        plotter.set_background(background)
+
+        for fem in self.fems:
+            mesh = fem.mesh
+            tdim = mesh.topology.dim
+            num_cells_local = mesh.topology.index_map(tdim).size_local
+            topology, cell_types, x = vtk_mesh(mesh, tdim, np.arange(num_cells_local, dtype=np.int32))
+
+            grid = pv.UnstructuredGrid(topology, cell_types, x)
+            
+            if tdim == 1:  # Bar elements
+                # Set line width based on `self.parameters['x_A']`
+                widths = np.where(fem.parameters['x_A'].x.array == 1, 4, 1)
+                grid["line_width"] = widths
+                
+                # Set colors based on `self.parameters['x_A']`
+                colors = np.where(fem.parameters['x_m'].x.array == 1, "red", "blue")
+                grid["color"] = colors
+                
+                plotter.add_mesh(grid,  
+                                show_edges=True, )
+            else:
+                # Default visualization for higher-dimensional elements
+                plotter.add_mesh(grid, show_edges=True)
+            
+            plotter.view_xy()
+
+        plotter.show()

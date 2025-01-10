@@ -10,7 +10,7 @@ def solve_generalized_eigenvalue_problem(
     A: PETSc.Mat,
     B: PETSc.Mat,
     nev: int = 10,
-    tol: float = 1e-10,
+    tol: float = 1e-20,
     max_it: int = 1000,
 ):
     global test
