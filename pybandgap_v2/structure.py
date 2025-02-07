@@ -313,8 +313,16 @@ class SetStructure:
     
     def show_structure(self, 
                     colors=None, 
-                    background=(31, 31, 31)):
+                    background=(31, 31, 31), 
+                    highlight_index=None):
+        """
+        Muestra la estructura con una opción para resaltar un índice específico en verde.
 
+        Args:
+            colors (optional): Colores para los elementos.
+            background (tuple, optional): Color de fondo de la visualización.
+            highlight_index (int, optional): Índice del elemento a resaltar en verde.
+        """
         plotter = pv.Plotter()
         plotter.set_background(background)
 
@@ -328,15 +336,25 @@ class SetStructure:
             
             if tdim == 1:  # Bar elements
                 # Set line width based on `self.parameters['x_A']`
-                widths = np.where(fem.parameters['x_A'].x.array == 1, 4, 1)
+                widths = np.where(fem.parameters['x_A'].x.array == 1, 8, 2)
                 grid["line_width"] = widths
                 
-                # Set colors based on `self.parameters['x_A']`
+                # Set colors based on `self.parameters['x_m']`
                 colors = np.where(fem.parameters['x_m'].x.array == 1, "red", "blue")
+                
+                # Override color for the highlighted index
+                if highlight_index is not None and 0 <= highlight_index < num_cells_local:
+                    colors[highlight_index] = 'w'
+                
                 grid["color"] = colors
                 
-                plotter.add_mesh(grid,  
-                                show_edges=True, )
+                for cell_id in range(num_cells_local):
+                    plotter.add_mesh(
+                        grid.extract_cells(cell_id),
+                        color=grid["color"][cell_id],
+                        line_width=grid["line_width"][cell_id],
+                        show_edges=True,
+                    )
             else:
                 # Default visualization for higher-dimensional elements
                 plotter.add_mesh(grid, show_edges=True)
